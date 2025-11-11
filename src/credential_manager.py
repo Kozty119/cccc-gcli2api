@@ -391,67 +391,76 @@ class CredentialManager:
     
     async def record_api_call_result(self, credential_name: str, success: bool, error_code: Optional[int] = None, temp_disabled_until: Optional[float] = None):
         """
+        记录API调用结果的公共方法。
+        这个方法会获取锁，然后调用无锁的内部实现。
+        """
+        async with self._operation_lock:
+            await self._record_api_call_result_internal(
+                credential_name, success, error_code, temp_disabled_until
+            )
+
+    async def _record_api_call_result_internal(self, credential_name: str, success: bool, error_code: Optional[int] = None, temp_disabled_until: Optional[float] = None):
+        """
         记录API调用结果。
         429禁用逻辑统一为仅依赖API返回的精确重置时间。
         添加了并发锁以防止竞态条件。
         """
-        async with self._operation_lock:
-            try:
-                current_state = await self._storage_adapter.get_credential_state(credential_name)
-                if not current_state:
-                    current_state = {}
+        try:
+            current_state = await self._storage_adapter.get_credential_state(credential_name)
+            if not current_state:
+                current_state = {}
 
-                state_updates = {}
+            state_updates = {}
 
-                if success:
-                    # 成功后重置所有错误相关的状态
-                    # 检查是否需要重置（之前是禁用状态或有错误码）
-                    if current_state.get("disabled") or current_state.get("error_codes"):
-                        state_updates["last_success"] = time.time()
-                        state_updates["error_codes"] = []
-                        state_updates["temp_disabled_until"] = None
-                        state_updates["disabled"] = False # 确保解除禁用
-                        log.info(f"凭证 {credential_name} 调用成功，重置所有错误状态。")
+            if success:
+                # 成功后重置所有错误相关的状态
+                # 检查是否需要重置（之前是禁用状态或有错误码）
+                if current_state.get("disabled") or current_state.get("error_codes"):
+                    state_updates["last_success"] = time.time()
+                    state_updates["error_codes"] = []
+                    state_updates["temp_disabled_until"] = None
+                    state_updates["disabled"] = False # 确保解除禁用
+                    log.info(f"凭证 {credential_name} 调用成功，重置所有错误状态。")
 
-                elif error_code == 429:
-                    # 为了UI显示，仍然记录429错误码
-                    error_codes = current_state.get("error_codes", [])
-                    if 429 not in error_codes:
-                        error_codes.append(429)
-                    state_updates["error_codes"] = error_codes
+            elif error_code == 429:
+                # 为了UI显示，仍然记录429错误码
+                error_codes = current_state.get("error_codes", [])
+                if 429 not in error_codes:
+                    error_codes.append(429)
+                state_updates["error_codes"] = error_codes
 
-                    # 统一禁用逻辑：仅当API提供了精确重置时间时才禁用
-                    if temp_disabled_until:
-                        state_updates["temp_disabled_until"] = temp_disabled_until
-                        state_updates["disabled"] = True
-                        china_tz = timezone(timedelta(hours=8))
-                        human_readable_time = datetime.fromtimestamp(temp_disabled_until, tz=china_tz).strftime('%Y-%m-%d %H:%M:%S')
-                        log.info(f"凭证 {credential_name} 因429错误被动态禁用，直至: {human_readable_time} (北京时间)")
-                    else:
-                        # 如果API没有提供重置时间，则根据用户策略执行永久禁用
-                        state_updates["disabled"] = True
-                        state_updates["temp_disabled_until"] = None  # 确保持久禁用
-                        log.warning(f"凭证 {credential_name} 收到429错误且无重置时间，根据策略执行永久禁用。")
+                # 统一禁用逻辑：仅当API提供了精确重置时间时才禁用
+                if temp_disabled_until:
+                    state_updates["temp_disabled_until"] = temp_disabled_until
+                    state_updates["disabled"] = True
+                    china_tz = timezone(timedelta(hours=8))
+                    human_readable_time = datetime.fromtimestamp(temp_disabled_until, tz=china_tz).strftime('%Y-%m-%d %H:%M:%S')
+                    log.info(f"凭证 {credential_name} 因429错误被动态禁用，直至: {human_readable_time} (北京时间)")
+                else:
+                    # 如果API没有提供重置时间，则根据用户策略执行永久禁用
+                    state_updates["disabled"] = True
+                    state_updates["temp_disabled_until"] = None  # 确保持久禁用
+                    log.warning(f"凭证 {credential_name} 收到429错误且无重置时间，根据策略执行永久禁用。")
 
-                elif error_code:
-                    # 处理其他错误码
-                    error_codes = current_state.get("error_codes", [])
-                    if error_code not in error_codes:
-                        error_codes.append(error_code)
-                    state_updates["error_codes"] = error_codes[-10:]  # 保留最近10个
+            elif error_code:
+                # 处理其他错误码
+                error_codes = current_state.get("error_codes", [])
+                if error_code not in error_codes:
+                    error_codes.append(error_code)
+                state_updates["error_codes"] = error_codes[-10:]  # 保留最近10个
 
-                    # 永久性错误（如400, 403），则永久禁用
-                    permanent_error_codes = [400, 401, 403]
-                    if error_code in permanent_error_codes:
-                        state_updates["disabled"] = True
-                        state_updates["temp_disabled_until"] = None  # 确保不是临时禁用
-                        log.warning(f"凭证 {credential_name} 因永久性错误代码 {error_code} 被禁用。")
+                # 永久性错误（如400, 403），则永久禁用
+                permanent_error_codes = [400, 401, 403]
+                if error_code in permanent_error_codes:
+                    state_updates["disabled"] = True
+                    state_updates["temp_disabled_until"] = None  # 确保不是临时禁用
+                    log.warning(f"凭证 {credential_name} 因永久性错误代码 {error_code} 被禁用。")
 
-                if state_updates:
-                    await self.update_credential_state(credential_name, state_updates)
+            if state_updates:
+                await self.update_credential_state(credential_name, state_updates)
 
-            except Exception as e:
-                log.error(f"记录API调用结果时出错 {credential_name}: {e}")
+        except Exception as e:
+            log.error(f"记录API调用结果时出错 {credential_name}: {e}")
     
     # 原子操作支持
     @asynccontextmanager
@@ -558,7 +567,7 @@ class CredentialManager:
             error_code = int(status_code_match.group(1)) if status_code_match else 400
 
             # 统一调用记录函数，由它决定禁用策略
-            await self.record_api_call_result(filename, False, error_code)
+            await self._record_api_call_result_internal(filename, False, error_code)
 
             return None
 
@@ -566,7 +575,7 @@ class CredentialManager:
             error_msg = str(e)
             log.error(f"Token刷新时发生未知错误 {filename}: {error_msg}")
             # 对于未知错误，也记录为通用失败
-            await self.record_api_call_result(filename, False, 400)
+            await self._record_api_call_result_internal(filename, False, 400)
             return None
     
     def _is_permanent_refresh_failure(self, error_msg: str) -> bool:

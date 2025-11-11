@@ -255,43 +255,51 @@ class UnifiedCacheManager:
             # 出错时不应清空缓存，应保留内存中的数据
     
     async def _write_loop(self):
-        """异步写回循环"""
+        """异步写回循环（优化，不在锁内执行I/O）"""
         while not self._shutdown_event.is_set():
             try:
                 # 等待写入延迟或关闭信号
                 try:
                     await asyncio.wait_for(self._shutdown_event.wait(), timeout=self._write_delay)
-                    break  # 收到关闭信号
+                    if self._shutdown_event.is_set():
+                        break
                 except asyncio.TimeoutError:
-                    pass  # 超时，检查是否需要写回
-                
-                # 如果缓存脏了，写回底层存储
+                    pass  # 正常超时，继续执行
+
+                # 1. 在锁内快速复制数据，然后释放锁
+                data_to_write = None
                 async with self._cache_lock:
                     if self._cache_dirty:
-                        await self._write_cache()
-                
+                        data_to_write = self._cache.copy()
+
+                # 2. 如果有数据，就在锁外执行I/O密集型操作
+                if data_to_write:
+                    await self._write_cache(data_to_write)
+
             except Exception as e:
                 log.error(f"Error in {self._name} cache writer loop: {e}")
-                await asyncio.sleep(1)
-    
-    async def _write_cache(self):
-        """将缓存写回底层存储"""
-        if not self._cache_dirty:
-            return
-        
+                await asyncio.sleep(5) # 出错时等待更长时间
+
+    async def _write_cache(self, data_to_write: Dict[str, Any]):
+        """将缓存写回底层存储（不在锁内执行）"""
         try:
             start_time = time.time()
-            
-            # 写入后端
-            success = await self._backend.write_data(self._cache.copy())
-            
+
+            success = await self._backend.write_data(data_to_write)
+
             if success:
-                self._cache_dirty = False
                 operation_time = time.time() - start_time
-                log.debug(f"{self._name} cache written to backend in {operation_time:.3f}s ({len(self._cache)} items)")
+                log.debug(f"{self._name} cache written to backend in {operation_time:.3f}s ({len(data_to_write)} items)")
+                # 3. 写成功后，重新获取锁以更新状态
+                async with self._cache_lock:
+                    # 检查在写入期间缓存是否被再次修改
+                    if self._cache == data_to_write:
+                        self._cache_dirty = False
+                    else:
+                        log.debug("Cache modified during write, will write again in next cycle.")
             else:
-                log.error(f"Failed to write {self._name} cache to backend")
-            
+                log.error(f"Failed to write {self._name} cache to backend. Will retry on next cycle.")
+
         except Exception as e:
             log.error(f"Error writing {self._name} cache to backend: {e}")
     

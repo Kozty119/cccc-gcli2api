@@ -120,6 +120,7 @@ class Credentials:
         """判断是否是不需要重试的错误"""
         non_retryable_patterns = [
             "400 Bad Request",
+            "403 Forbidden",
             "invalid_grant",
             "refresh_token_expired",
             "invalid_refresh_token", 

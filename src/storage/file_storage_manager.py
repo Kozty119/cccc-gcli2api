@@ -91,7 +91,6 @@ class FileStorageManager:
         self._credentials_dir = None  # 将通过异步初始化设置
         self._state_file = None
         self._config_file = None
-        self._lock = asyncio.Lock()
         self._initialized = False
         
         # 统一缓存管理器
@@ -286,28 +285,27 @@ class FileStorageManager:
         """存储凭证数据到统一缓存"""
         self._ensure_initialized()
 
-        async with self._lock:
-            try:
-                filename = self._normalize_filename(filename)
+        try:
+            filename = self._normalize_filename(filename)
 
-                # 获取现有数据或创建新数据
-                all_data = await self._credentials_cache_manager.get_all()
-                existing_state = all_data.get(filename, {})
+            # 获取现有数据或创建新数据
+            all_data = await self._credentials_cache_manager.get_all()
+            existing_state = all_data.get(filename, {})
 
-                # 修复：直接在现有状态上更新，而不是从默认状态开始重置
-                final_data = existing_state.copy()
-                final_data.update(credential_data)
+            # 修复：直接在现有状态上更新，而不是从默认状态开始重置
+            final_data = existing_state.copy()
+            final_data.update(credential_data)
 
-                # 更新整个数据集
-                all_data[filename] = final_data
+            # 更新整个数据集
+            all_data[filename] = final_data
 
-                success = await self._credentials_cache_manager.update_multi({filename: final_data})
-                log.debug(f"Stored credential to unified cache: {filename}")
-                return success
+            success = await self._credentials_cache_manager.update_multi({filename: final_data})
+            log.debug(f"Stored credential to unified cache: {filename}")
+            return success
 
-            except Exception as e:
-                log.error(f"Error storing credential {filename}: {e}")
-                return False
+        except Exception as e:
+            log.error(f"Error storing credential {filename}: {e}")
+            return False
     
     async def get_credential(self, filename: str) -> Optional[Dict[str, Any]]:
         """从统一缓存获取凭证数据"""
@@ -346,16 +344,15 @@ class FileStorageManager:
         """从统一缓存删除凭证"""
         self._ensure_initialized()
 
-        async with self._lock:
-            try:
-                filename = self._normalize_filename(filename)
-                success = await self._credentials_cache_manager.delete(filename)
-                log.debug(f"Deleted credential from unified cache: {filename}")
-                return success
+        try:
+            filename = self._normalize_filename(filename)
+            success = await self._credentials_cache_manager.delete(filename)
+            log.debug(f"Deleted credential from unified cache: {filename}")
+            return success
 
-            except Exception as e:
-                log.error(f"Error deleting credential {filename}: {e}")
-                return False
+        except Exception as e:
+            log.error(f"Error deleting credential {filename}: {e}")
+            return False
     
     # ============ 状态管理 ============
     
@@ -363,24 +360,23 @@ class FileStorageManager:
         """更新凭证状态"""
         self._ensure_initialized()
 
-        async with self._lock:
-            try:
-                filename = self._normalize_filename(filename)
-                all_data = await self._credentials_cache_manager.get_all()
+        try:
+            filename = self._normalize_filename(filename)
+            all_data = await self._credentials_cache_manager.get_all()
 
-                if filename not in all_data:
-                    all_data[filename] = self.get_default_state()
+            if filename not in all_data:
+                all_data[filename] = self.get_default_state()
 
-                # 更新状态
-                all_data[filename].update(state_updates)
+            # 更新状态
+            all_data[filename].update(state_updates)
 
-                success = await self._credentials_cache_manager.update_multi({filename: all_data[filename]})
-                log.debug(f"Updated credential state in unified cache: {filename}")
-                return success
+            success = await self._credentials_cache_manager.update_multi({filename: all_data[filename]})
+            log.debug(f"Updated credential state in unified cache: {filename}")
+            return success
 
-            except Exception as e:
-                log.error(f"Error updating credential state {filename}: {e}")
-                return False
+        except Exception as e:
+            log.error(f"Error updating credential state {filename}: {e}")
+            return False
     
     async def get_credential_state(self, filename: str) -> Dict[str, Any]:
         """从统一缓存获取凭证状态"""
@@ -470,24 +466,23 @@ class FileStorageManager:
         """更新使用统计"""
         self._ensure_initialized()
 
-        async with self._lock:
-            try:
-                filename = self._normalize_filename(filename)
-                all_data = await self._credentials_cache_manager.get_all()
+        try:
+            filename = self._normalize_filename(filename)
+            all_data = await self._credentials_cache_manager.get_all()
 
-                if filename not in all_data:
-                    all_data[filename] = self.get_default_state()
+            if filename not in all_data:
+                all_data[filename] = self.get_default_state()
 
-                # 更新统计数据
-                all_data[filename].update(stats_updates)
+            # 更新统计数据
+            all_data[filename].update(stats_updates)
 
-                success = await self._credentials_cache_manager.update_multi({filename: all_data[filename]})
-                log.debug(f"Updated usage stats in unified cache: {filename}")
-                return success
+            success = await self._credentials_cache_manager.update_multi({filename: all_data[filename]})
+            log.debug(f"Updated usage stats in unified cache: {filename}")
+            return success
 
-            except Exception as e:
-                log.error(f"Error updating usage stats {filename}: {e}")
-                return False
+        except Exception as e:
+            log.error(f"Error updating usage stats {filename}: {e}")
+            return False
     
     async def get_usage_stats(self, filename: str) -> Dict[str, Any]:
         """从统一缓存获取使用统计"""
