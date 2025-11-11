@@ -8,14 +8,10 @@ spec:
       type: DOMAIN
       name: 公共域名
       description: 您希望为GCLI2API服务绑定的域名。
-    - key: API_PASSWORD
+    - key: PASSWORD
       type: PASSWORD
-      name: API 密码
-      description: 用于保护OpenAI/Gemini API端点的密码。
-    - key: PANEL_PASSWORD
-      type: PASSWORD
-      name: 控制面板密码
-      description: 用于保护Web控制面板的密码。
+      name: 通用密码
+      description: 用于访问API端点、控制面板的密码。
   readme: |-
     # GCLI2API
     GCLI2API是一个开源的高性能API代理服务，它使得Google Gemini模型能够兼容OpenAI的API格式。
