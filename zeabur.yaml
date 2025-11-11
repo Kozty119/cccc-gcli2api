@@ -37,6 +37,9 @@ spec:
           - id: creds-data
             dir: /app/creds
         env:
+          PORT:
+            default: 7861
+            readonly: true
           API_PASSWORD:
             default: ${API_PASSWORD}
             expose: true
