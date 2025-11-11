@@ -2,13 +2,6 @@ apiVersion: zeabur.com/v1
 kind: Template
 metadata:
   name: GCLI2API
-  description: 一个开源的高性能API代理服务，它使得Google Gemini模型能够兼容OpenAI的API格式。
-  icon: https://raw.githubusercontent.com/zeabur/service-icons/main/marketplace/gemini.svg
-  tags:
-    - AI
-    - Proxy
-    - Gemini
-    - OpenAI
 spec:
   variables:
     - key: PUBLIC_DOMAIN

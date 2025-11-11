@@ -6,7 +6,7 @@
 
 ## 🚀 快速部署
 
-[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates/2QLQC2?referralCode=su-kaka)
+[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates/27350M)
 ---
 
 ## ⚠️ 许可证声明
